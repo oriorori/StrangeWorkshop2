@@ -1,12 +1,20 @@
+using FishNet;
+using FishNet.Component.Spawning;
+using FishNet.Connection;
+using FishNet.Managing.Server;
 using TMPro;
-using Unity.Netcode;
+using FishNet.Object;
 using UnityEngine;
 using UnityEngine.UI;
+using Cysharp.Threading.Tasks;
+using FishNet.Transporting;
+using UnityEngine.Serialization;
 
 public class MainMenuUIController : MonoBehaviour
 {
+    public GameObject NetworkGameManagerPrefab;
+    
     public string ipAddress = "127.0.0.1";
-    public GameObject myPlayerPrefab;
     
     [Header("Main Menu UI Elements")] [SerializeField]
     private GameObject _mainMenuPanelObject;
@@ -20,52 +28,58 @@ public class MainMenuUIController : MonoBehaviour
     [SerializeField] private GameObject _joinRoomPanelObject;
     [SerializeField] private TMP_InputField _hostIpInputField;
     [SerializeField] private Button _joinButton;
+    
+    private bool _isServerInitialized = false;
 
     void Start()
     {
         _makeRoomButton.onClick.AddListener(OnPressedMakeRoomButton);
         _joinRoomButton.onClick.AddListener(OnPressedJoinRoomButton);
-        _joinButton.onClick.AddListener(OnPressedJoinButton);
-        
-        NetworkManager.Singleton.OnClientConnectedCallback += (clientId) =>
-        {
-            Debug.Log("연결 성공!");
-            if (NetworkManager.Singleton.IsHost)
-            {
-                var player = Instantiate(myPlayerPrefab); // 프리팹 인스턴스화
-                player.GetComponent<NetworkObject>().SpawnAsPlayerObject(clientId); // 소유자 설정 + Spawn
-            }
-        };
-        
-        NetworkManager.Singleton.OnClientDisconnectCallback += (id) =>
-        {
-            if (id == NetworkManager.Singleton.LocalClientId)
-                Debug.Log("❌ 연결 실패 or 서버에서 강제 연결 종료");
-        };
+
+        // 서버측에서 서버가 생성되었음을 확인
+        InstanceFinder.ServerManager.OnServerConnectionState += (ServerConnectionStateArgs args) => OnServerConnectionState(args);
+        // 서버측에서 클라가 연결되었음을 확인
+        InstanceFinder.ServerManager.OnAuthenticationResult += (NetworkConnection conn, bool result) => OnAuthenticationResult(conn, result).Forget();
+        // 클라측에서 서버에 연결되었음을 확인
+        InstanceFinder.ClientManager.OnAuthenticated += OnClientInitialized; 
     }
 
     private void OnPressedMakeRoomButton()
     {
-        NetworkManager.Singleton.StartHost();
-        
-        // CustomNetworkManager.Instance.StartHost();
+        Debug.Log("Pressed Make Room Button");
+        InstanceFinder.ServerManager.StartConnection();
+        InstanceFinder.ClientManager.StartConnection();
     }
-
     private void OnPressedJoinRoomButton()
     {
-        var transport = NetworkManager.Singleton.GetComponent<Unity.Netcode.Transports.UTP.UnityTransport>();
-        transport.ConnectionData.Address = ipAddress;
-        transport.ConnectionData.Port = 7777;
-        NetworkManager.Singleton.StartClient();
-
-        // _mainMenuPanelObject.SetActive(false);
-        // _joinRoomPanelObject.SetActive(true);
+        Debug.Log("Pressed Join Room Button");
+        InstanceFinder.ClientManager.StartConnection();
     }
 
-    private void OnPressedJoinButton()
+    private void OnServerConnectionState(ServerConnectionStateArgs args)
     {
-        if (_hostIpInputField.text == "") return;
+        // OnServerConnectionState는 서버 시작시, 서버 중단시 각각 2번씩 호출된다
+        // starting -> started, stopping -> stopped
+        switch (args.ConnectionState)
+        {
+            case LocalConnectionState.Started:
+                var gameManager = Instantiate(NetworkGameManagerPrefab);
+                InstanceFinder.ServerManager.Spawn(gameManager.gameObject);
+                _isServerInitialized = true;
+                break;
+        }
+    }
+
+    private async UniTask OnAuthenticationResult(NetworkConnection conn, bool result)
+    {
+        await UniTask.WaitUntil(() => _isServerInitialized);
         
-        CustomNetworkManager.Instance.StartClient(_hostIpInputField.text);
+        Debug.Log("On Authentication Result");
+        NetworkGameManager.Instance.SpawnPlayer(conn);
+    }
+    
+    private void OnClientInitialized()
+    {
+        Debug.Log("Client initialized");
     }
 }

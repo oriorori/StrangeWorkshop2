@@ -1,7 +1,8 @@
 using System;
+using FishNet.Object;
 using UnityEngine;
 
-public abstract class Singleton<T> : MonoBehaviour where T : MonoBehaviour
+public abstract class Singleton<T> : NetworkBehaviour where T : NetworkBehaviour
 {
     private static T _instance;
     private static readonly object _lock = new object();
@@ -18,8 +19,7 @@ public abstract class Singleton<T> : MonoBehaviour where T : MonoBehaviour
 
                     if (!_instance)
                     {
-                        GameObject singletonObject = new GameObject(typeof(T).Name);
-                        _instance = singletonObject.AddComponent<T>();
+                        Debug.LogError($"No object of type {typeof(T)} found in scene.");
                     }
                 }
             }

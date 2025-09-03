@@ -1,3 +1,4 @@
+using FishNet.Object;
 using UnityEngine;
 
 public abstract class SingletonDontDestroy<T> : MonoBehaviour where T : MonoBehaviour
